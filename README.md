@@ -1,1 +1,1 @@
-# hostel_expneses
+# hostel_expenses
