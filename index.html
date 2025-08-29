@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hostel Expense Tracker</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    .dark-mode {
+      background: #121212;
+      color: #eee;
+    }
+    header {
+      background: #4CAF50;
+      color: white;
+      text-align: center;
+      padding: 1rem;
+    }
+    .container {
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 15px;
+    }
+    form {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    input, select, button, textarea {
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      width: 100%;
+    }
+    button {
+      cursor: pointer;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      transition: 0.2s;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid #ddd;
+      text-align: left;
+    }
+    .actions button {
+      margin-right: 5px;
+      background: #2196F3;
+    }
+    .actions .delete {
+      background: #f44336;
+    }
+    .dark-mode header { background: #333; }
+    .dark-mode input, .dark-mode select, .dark-mode textarea { background: #222; color: #fff; border: 1px solid #555; }
+    .dark-mode table { color: #fff; }
+    .toggle-btn { margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📊 Hostel Expense Tracker</h1>
+  </header>
+
+  <div class="container">
+    <form id="expenseForm">
+      <select id="category" required>
+        <option value="">Select Category</option>
+        <option value="Breakfast">Breakfast</option>
+        <option value="Lunch">Lunch</option>
+        <option value="Dinner">Dinner</option>
+        <option value="Snacks">Snacks</option>
+        <option value="Travel">Travel</option>
+        <option value="Other">Other</option>
+      </select>
+      <input type="number" id="amount" placeholder="Amount (₹)" required>
+      <textarea id="description" placeholder="Description (only if Other selected)" style="display:none;"></textarea>
+      <button type="submit">+ Add Expense</button>
+    </form>
+
+    <input type="text" id="searchBox" placeholder="Search by category, description, or date...">
+
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Time</th>
+          <th>Category</th>
+          <th>Description</th>
+          <th>Amount (₹)</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="expenseTable"></tbody>
+    </table>
+
+    <h3>Total: ₹<span id="total">0</span></h3>
+    <button onclick="downloadPDF()">📄 Download PDF</button>
+    <button class="toggle-btn" onclick="toggleDarkMode()">🌙 Toggle Dark Mode</button>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script>
+    const form = document.getElementById("expenseForm");
+    const table = document.getElementById("expenseTable");
+    const totalEl = document.getElementById("total");
+    const searchBox = document.getElementById("searchBox");
+    const categorySelect = document.getElementById("category");
+    const descField = document.getElementById("description");
+
+    let expenses = JSON.parse(localStorage.getItem("expenses")) || [];
+
+    function renderTable() {
+      table.innerHTML = "";
+      let total = 0;
+      expenses.forEach((exp, i) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${exp.date}</td>
+          <td>${exp.time}</td>
+          <td>${exp.category}</td>
+          <td>${exp.description}</td>
+          <td>${exp.amount}</td>
+          <td class="actions">
+            <button onclick="editExpense(${i})">✏️ Edit</button>
+            <button class="delete" onclick="deleteExpense(${i})">🗑️ Delete</button>
+          </td>
+        `;
+        table.appendChild(row);
+        total += Number(exp.amount);
+      });
+      totalEl.textContent = total;
+    }
+
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+      const category = categorySelect.value;
+      const amount = document.getElementById("amount").value;
+      const description = category === "Other" ? descField.value : category;
+      if (!amount || !category) return;
+
+      const now = new Date();
+      expenses.push({
+        date: now.toLocaleDateString(),
+        time: now.toLocaleTimeString(),
+        category,
+        description,
+        amount
+      });
+      localStorage.setItem("expenses", JSON.stringify(expenses));
+      renderTable();
+      form.reset();
+      descField.style.display = "none";
+    });
+
+    categorySelect.addEventListener("change", () => {
+      descField.style.display = categorySelect.value === "Other" ? "block" : "none";
+    });
+
+    function deleteExpense(i) {
+      expenses.splice(i, 1);
+      localStorage.setItem("expenses", JSON.stringify(expenses));
+      renderTable();
+    }
+
+    function editExpense(i) {
+      const exp = expenses[i];
+      categorySelect.value = exp.category;
+      document.getElementById("amount").value = exp.amount;
+      if (exp.category === "Other") {
+        descField.style.display = "block";
+        descField.value = exp.description;
+      } else {
+        descField.style.display = "none";
+      }
+      deleteExpense(i);
+    }
+
+    searchBox.addEventListener("input", () => {
+      const query = searchBox.value.toLowerCase();
+      document.querySelectorAll("tbody tr").forEach(row => {
+        row.style.display = row.innerText.toLowerCase().includes(query) ? "" : "none";
+      });
+    });
+
+    function downloadPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.setFontSize(14);
+      doc.text("Hostel Expense Report", 14, 15);
+      let y = 30;
+      expenses.forEach(exp => {
+        doc.text(`Date: ${exp.date} | Time: ${exp.time}`, 14, y);
+        doc.text(`Category: ${exp.category} | Desc: ${exp.description} | Amount: ₹${exp.amount}`, 14, y + 10);
+        y += 25;
+      });
+      doc.text(`Total = ₹${totalEl.textContent}`, 14, y);
+      doc.save("expenses.pdf");
+    }
+
+    function toggleDarkMode() {
+      document.body.classList.toggle("dark-mode");
+    }
+
+    renderTable();
+  </script>
+</body>
+</html>
