@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Hostel Expense Tracker — Grouped View</title>
+
+<!-- jsPDF + AutoTable -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+<style>
+  :root{
+    --bg:#f4f7fb; --card:#fff; --muted:#6b7280; --accent:#0b63ff; --radius:12px;
+  }
+  html,body{height:100%; margin:0; font-family:Inter,system-ui,Arial,sans-serif; background:var(--bg); color:#081827}
+  body.dark{background:#021026; color:#e6f3ff}
+  .wrap{max-width:980px; margin:12px auto; padding:12px;}
+  header{display:flex; justify-content:space-between; align-items:center; padding:12px; border-radius:10px; background:linear-gradient(90deg,var(--accent), #164bb6); color:#fff}
+  header h1{margin:0; font-size:1rem}
+  .controls{display:flex; gap:8px; align-items:center}
+  button.icon{background:transparent; color:white; border:1px solid rgba(255,255,255,0.12); padding:8px 10px; border-radius:8px; cursor:pointer}
+  .card{background:var(--card); border-radius:var(--radius); padding:12px; box-shadow:0 8px 20px rgba(2,6,23,0.06); margin-top:12px}
+  form.grid{display:grid; grid-template-columns: 1fr 220px 120px 140px; gap:10px; align-items:end;}
+  @media(max-width:880px){ form.grid{grid-template-columns: 1fr 160px 120px; } }
+  @media(max-width:640px){ form.grid{grid-template-columns: 1fr; } .controls{display:none} }
+  label{display:block;font-size:0.82rem;color:var(--muted);margin-bottom:6px}
+  input,select,textarea{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(10,20,40,0.06);font-size:0.95rem;background:linear-gradient(180deg,#fff,#fbfdff)}
+  .btn{padding:10px 12px;border-radius:10px;border:none;background:var(--accent);color:white;font-weight:700;cursor:pointer}
+  .btn.ghost{background:transparent;border:1px solid rgba(0,0,0,0.06);color:var(--accent)}
+  .summary{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .summary .box{padding:8px 12px;border-radius:8px;background:linear-gradient(180deg,rgba(255,255,255,0.6),rgba(255,255,255,0.4))}
+  .search-row{display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap}
+  .table-wrap{margin-top:12px}
+  .date-section{margin-top:18px}
+  .date-header{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(90deg,rgba(2,6,23,0.03),rgba(2,6,23,0.01));padding:10px;border-radius:8px}
+  .date-title{font-weight:700}
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  th,td{padding:8px 10px;border-bottom:1px solid rgba(10,20,40,0.04);text-align:left;font-size:0.95rem}
+  th{background:rgba(2,6,23,0.03);position:sticky;top:0}
+  .actions{display:flex;gap:8px;justify-content:flex-end}
+  .card-item{background:linear-gradient(180deg,rgba(255,255,255,0.95),rgba(255,255,255,0.9));padding:10px;border-radius:10px;margin-bottom:10px;box-shadow:0 2px 8px rgba(2,6,23,0.04)}
+  @media(max-width:720px){
+    /* hide tables, show card-list */
+    table{display:none}
+  }
+  .footer{margin-top:14px;color:var(--muted);font-size:0.9rem;text-align:center}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Hostel Expense Tracker — Grouped View</h1>
+      <div class="controls">
+        <div id="clock" style="color:rgba(255,255,255,0.95)">--:--:--</div>
+        <button id="darkToggle" class="icon">🌙</button>
+        <button id="helpBtn" class="icon">❓</button>
+      </div>
+    </header>
+
+    <!-- Add / Import -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong>Add / Import Expenses</strong>
+        <div class="muted small">You can Import a JSON file (format shown below) or add manually</div>
+      </div>
+
+      <form class="grid" id="addForm" onsubmit="return addEntry(event)">
+        <div>
+          <label>Category</label>
+          <select id="category" required>
+            <option value="">Choose</option>
+            <option>Breakfast</option><option>Lunch</option><option>Dinner</option><option>Snacks</option>
+            <option>Travel</option><option>Books</option><option>Hostel</option><option>Other</option>
+          </select>
+        </div>
+
+        <div>
+          <label id="detailLabel" style="display:none">Details</label>
+          <input id="detail" placeholder="" style="display:none"/>
+        </div>
+
+        <div>
+          <label>Amount (₹)</label>
+          <input id="amount" type="number" step="0.01" placeholder="e.g. 50"/>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <label style="opacity:0">act</label>
+          <button class="btn" type="submit" id="saveBtn">➕ Add</button>
+          <button type="button" class="btn ghost" onclick="clearForm()">Clear</button>
+        </div>
+      </form>
+
+      <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+        <input id="jsonFile" type="file" accept=".json"/>
+        <button class="btn ghost" onclick="importJSON()">Import JSON</button>
+        <button class="btn" onclick="exportCSV()">Export CSV</button>
+        <button class="btn" onclick="exportPDF()">Export PDF</button>
+      </div>
+
+      <div style="margin-top:8px; font-size:0.9rem; color:var(--muted)">
+        JSON sample:
+        <pre style="background:#f0f4ff;padding:6px;border-radius:6px;font-size:0.85rem">[
+  {"date":"2025-08-30","time":"09:30 AM","category":"Lunch","detail":"Maggi + Tea","amount":50},
+  {"date":"2025-08-29","time":"07:30 PM","category":"Travel","detail":"RANCHI → RKDF","amount":20}
+]</pre>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div class="summary">
+          <div class="box">Total: <strong id="grandTotal">₹0.00</strong></div>
+          <div class="box">Entries: <strong id="grandCount">0</strong></div>
+        </div>
+
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+          <input id="universal" type="text" placeholder="Universal search (date/category/detail/amount)" style="min-width:200px;padding:8px;border-radius:8px"/>
+          <select id="filterCategory">
+            <option value="">All categories</option><option>Breakfast</option><option>Lunch</option><option>Dinner</option>
+            <option>Snacks</option><option>Travel</option><option>Books</option><option>Hostel</option><option>Other</option>
+          </select>
+          <input id="filterDate" type="date"/>
+          <input id="filterDetail" placeholder="Detail keyword"/>
+          <button class="btn ghost" onclick="applyFilters()">Filter</button>
+          <button class="btn" onclick="clearFilters()">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grouped view -->
+    <div id="groupWrap"></div>
+
+    <div class="footer">Tip: To pin on Android Chrome use menu → Add to Home screen. Always export CSV/PDF to backup.</div>
+  </div>
+
+<script>
+/* ---------- Utilities ---------- */
+const LSKEY = "hostel_expenses_grouped_v1";
+let expenses = JSON.parse(localStorage.getItem(LSKEY) || "[]");
+
+/* Clock */
+const clock = document.getElementById("clock");
+setInterval(()=> clock.textContent = new Date().toLocaleTimeString(),1000);
+clock.textContent = new Date().toLocaleTimeString();
+
+/* Detail prompts */
+const prompts = {
+  "Breakfast":"What did you eat?",
+  "Lunch":"What did you eat for lunch?",
+  "Dinner":"What did you eat?",
+  "Snacks":"What snack?",
+  "Travel":"From → To (e.g. Ranchi → RKDF)",
+  "Books":"Book title / notes",
+  "Hostel":"Mess / Fee / Bill details",
+  "Other":"Reason for expense"
+};
+const categoryEl = document.getElementById("category");
+const detailEl = document.getElementById("detail");
+const detailLabel = document.getElementById("detailLabel");
+categoryEl.addEventListener("change", ()=>{
+  const v = categoryEl.value;
+  if (!v){ detailEl.style.display="none"; detailLabel.style.display="none"; detailEl.value=""; return; }
+  detailLabel.innerText = prompts[v] || "Details";
+  detailEl.placeholder = prompts[v] || "Details";
+  detailEl.style.display="block"; detailLabel.style.display="block";
+});
+
+/* ---------- Add / Edit ---------- */
+let editingIndex = null;
+function addEntry(e){
+  e.preventDefault();
+  const cat = categoryEl.value.trim();
+  const detail = detailEl.value.trim();
+  const amount = document.getElementById("amount").value.trim();
+  if (!cat) return alert("Please choose a category.");
+  if (!detail) return alert(prompts[cat] ? `Please enter: ${prompts[cat]}` : "Please enter details.");
+  if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return alert("Please enter a valid amount.");
+  const now = new Date();
+  const entry = {
+    date: now.toISOString().slice(0,10), // yyyy-mm-dd
+    time: now.toLocaleTimeString(),
+    category: cat,
+    detail,
+    amount: Number(amount)
+  };
+  if (editingIndex !== null){
+    expenses[editingIndex] = entry;
+    editingIndex = null;
+    document.getElementById("saveBtn").textContent = "➕ Add";
+  } else {
+    expenses.push(entry);
+  }
+  localStorage.setItem(LSKEY, JSON.stringify(expenses));
+  clearForm(); renderGrouped();
+}
+
+/* Edit / Delete functions (by index in expenses array) */
+function onEdit(idx){
+  const e = expenses[idx];
+  categoryEl.value = e.category;
+  detailLabel.innerText = prompts[e.category] || "Details";
+  detailEl.value = e.detail;
+  detailEl.style.display="block"; detailLabel.style.display="block";
+  document.getElementById("amount").value = e.amount;
+  editingIndex = idx;
+  document.getElementById("saveBtn").textContent = "💾 Save";
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+function onDelete(idx){
+  if (!confirm("Delete this entry?")) return;
+  expenses.splice(idx,1);
+  localStorage.setItem(LSKEY, JSON.stringify(expenses));
+  renderGrouped();
+}
+
+/* clear form */
+function clearForm(){
+  categoryEl.value = ""; detailEl.value = ""; detailEl.style.display="none"; detailLabel.style.display="none"; document.getElementById("amount").value = ""; editingIndex = null; document.getElementById("saveBtn").textContent = "➕ Add";
+}
+
+/* ---------- Import JSON ---------- */
+function importJSON(){
+  const f = document.getElementById("jsonFile").files[0];
+  if (!f) return alert("Choose a .json file first");
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    try {
+      const parsed = JSON.parse(ev.target.result);
+      if (!Array.isArray(parsed)) return alert("JSON must be an array of entries.");
+      // Normalize & validate entries
+      const normalized = parsed.map(it => {
+        // Accept date as yyyy-mm-dd or other parseable formats
+        let dateISO = "";
+        if (it.date) {
+          // try to parse yyyy-mm-dd
+          if (/^\d{4}-\d{2}-\d{2}$/.test(it.date)) dateISO = it.date;
+          else {
+            const d = new Date(it.date);
+            if (!isNaN(d)) dateISO = d.toISOString().slice(0,10);
+            else dateISO = new Date().toISOString().slice(0,10);
+          }
+        } else dateISO = new Date().toISOString().slice(0,10);
+        return {
+          date: dateISO,
+          time: it.time || new Date().toLocaleTimeString(),
+          category: it.category || "Other",
+          detail: it.detail || (it.description || ""),
+          amount: Number(it.amount || it.amt || 0)
+        };
+      });
+      // Append to existing expenses
+      expenses = expenses.concat(normalized);
+      localStorage.setItem(LSKEY, JSON.stringify(expenses));
+      alert("Imported " + normalized.length + " entries.");
+      renderGrouped();
+    } catch (err) {
+      alert("Invalid JSON file.");
+    }
+  };
+  reader.readAsText(f);
+}
+
+/* ---------- Group & render by date ---------- */
+function renderGrouped(q="", fCategory="", fDate="", fDetail=""){
+  // default: read filters from inputs if not provided
+  if (typeof q === "undefined" || q === "") q = document.getElementById("universal").value.trim().toLowerCase();
+  if (typeof fCategory === "undefined" || fCategory === "") fCategory = document.getElementById("filterCategory").value;
+  if (typeof fDate === "undefined" || fDate === "") fDate = document.getElementById("filterDate").value;
+  if (typeof fDetail === "undefined" || fDetail === "") fDetail = document.getElementById("filterDetail").value.trim().toLowerCase();
+
+  // group by dateISO descending
+  const groups = {};
+  for (let i=0;i<expenses.length;i++){
+    const e = expenses[i];
+    const dateISO = e.date; // yyyy-mm-dd
+    // build searchable string
+    const searchable = `${e.date} ${e.time} ${e.category} ${e.detail || ""} ${e.amount}`.toLowerCase();
+    const matchQ = !q || searchable.includes(q);
+    const matchCat = !fCategory || e.category === fCategory;
+    const matchDate = !fDate || e.date === fDate;
+    const matchDetail = !fDetail || (e.detail || "").toLowerCase().includes(fDetail);
+    if (!(matchQ && matchCat && matchDate && matchDetail)) continue;
+    if (!groups[dateISO]) groups[dateISO] = [];
+    // also keep original index for edit/delete mapping
+    groups[dateISO].push({ item: e, idx: i });
+  }
+
+  // sort dates descending
+  const dates = Object.keys(groups).sort((a,b)=> b.localeCompare(a));
+  const wrapper = document.getElementById("groupWrap");
+  wrapper.innerHTML = "";
+  let grandTotal = 0, grandCount = 0;
+
+  if (dates.length === 0){
+    wrapper.innerHTML = `<div class="card"><div style="padding:12px">No entries match the filter.</div></div>`;
+    document.getElementById("grandTotal").textContent = "₹0.00";
+    document.getElementById("grandCount").textContent = "0";
+    return;
+  }
+
+  for (const d of dates){
+    const list = groups[d];
+    // convert dateISO to friendly date + day
+    const dt = new Date(d + "T00:00:00");
+    const dayName = dt.toLocaleDateString(undefined, {weekday:"long"});
+    const friendly = dt.toLocaleDateString();
+
+    // build date section
+    const sec = document.createElement("div");
+    sec.className = "date-section card";
+    sec.innerHTML = `<div class="date-header"><div class="date-title">📅 ${friendly} — ${dayName}</div><div class="muted small">Entries: ${list.length}</div></div>`;
+
+    // build table
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    thead.innerHTML = `<tr><th style="width:90px">Time</th><th style="width:110px">Category</th><th>Description</th><th style="width:110px; text-align:right">Amount</th><th style="width:120px; text-align:right">Action</th></tr>`;
+    table.appendChild(thead);
+    const tb = document.createElement("tbody");
+
+    let dailyTotal = 0;
+    for (const entryObj of list){
+      const e = entryObj.item;
+      const idx = entryObj.idx;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${e.time}</td>
+        <td>${escapeHtml(e.category)}</td>
+        <td>${escapeHtml(e.detail || "-")}</td>
+        <td style="text-align:right">₹${Number(e.amount).toFixed(2)}</td>
+        <td style="text-align:right">
+          <button class="icon-btn" onclick="onEdit(${idx})">✏️</button>
+          <button class="icon-btn" onclick="onDelete(${idx})">🗑️</button>
+        </td>`;
+      tb.appendChild(tr);
+      dailyTotal += Number(e.amount);
+    }
+    table.appendChild(tb);
+    const dailyFooter = document.createElement("div");
+    dailyFooter.style.marginTop = "8px";
+    dailyFooter.style.textAlign = "right";
+    dailyFooter.innerHTML = `<strong>Daily total: ₹${dailyTotal.toFixed(2)}</strong>`;
+    sec.appendChild(table);
+    sec.appendChild(dailyFooter);
+    wrapper.appendChild(sec);
+
+    grandTotal += dailyTotal;
+    grandCount += list.length;
+
+    // add mobile cards below table for small screens (duplicate content)
+    const mobileDiv = document.createElement("div");
+    mobileDiv.style.marginTop = "8px";
+    for (const entryObj of list){
+      const e = entryObj.item;
+      const idx = entryObj.idx;
+      const card = document.createElement("div");
+      card.className = "card-item";
+      card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center">
+        <div><strong>${e.time}</strong><div class="muted small">${escapeHtml(e.category)}</div></div>
+        <div style="text-align:right"><strong>₹${Number(e.amount).toFixed(2)}</strong></div>
+      </div>
+      <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center">
+        <div style="flex:1">${escapeHtml(e.detail || "-")}</div>
+        <div style="margin-left:8px;display:flex;gap:6px">
+          <button class="icon-btn" onclick="onEdit(${idx})">✏️</button>
+          <button class="icon-btn" onclick="onDelete(${idx})">🗑️</button>
+        </div>
+      </div>`;
+      mobileDiv.appendChild(card);
+    }
+    // append mobileDiv after section
+    sec.appendChild(mobileDiv);
+  }
+
+  document.getElementById("grandTotal").textContent = `₹${grandTotal.toFixed(2)}`;
+  document.getElementById("grandCount").textContent = grandCount;
+}
+
+/* ---------- apply / clear filters ---------- */
+function applyFilters(){
+  const q = document.getElementById("universal").value.trim().toLowerCase();
+  const fCat = document.getElementById("filterCategory").value;
+  const fDate = document.getElementById("filterDate").value;
+  const fDetail = document.getElementById("filterDetail").value.trim().toLowerCase();
+  renderGrouped(q, fCat, fDate, fDetail);
+}
+function clearFilters(){
+  document.getElementById("universal").value = "";
+  document.getElementById("filterCategory").value = "";
+  document.getElementById("filterDate").value = "";
+  document.getElementById("filterDetail").value = "";
+  renderGrouped();
+}
+
+/* ---------- exports ---------- */
+function exportCSV(){
+  if (expenses.length === 0) return alert("No entries to export.");
+  // validate entries: must have date, time, category, detail, amount
+  for (let i=0;i<expenses.length;i++){
+    const e = expenses[i];
+    if (!e.date || !e.time || !e.category || !e.detail || !e.amount) return alert(`Cannot export: entry ${i+1} missing field.`);
+  }
+  const header = ["date","time","category","detail","amount"];
+  const rows = expenses.map(e => [e.date, e.time, e.category, e.detail, e.amount]);
+  let csv = header.join(",") + "\n" + rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], {type:"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "hostel_expenses.csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+async function exportPDF(){
+  if (expenses.length === 0) return alert("No entries to export.");
+  for (let i=0;i<expenses.length;i++){
+    const e = expenses[i];
+    if (!e.date || !e.time || !e.category || !e.detail || !e.amount) return alert(`Cannot export: entry ${i+1} missing field.`);
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit:"pt", format:"a4"});
+  doc.setFontSize(14);
+  doc.text("Hostel Expenses (Grouped)", 40, 40);
+
+  // Build rows grouped by date
+  const head = [["Date","Time","Category","Detail","Amount (₹)"]];
+  const body = [];
+  // sort entries by date asc then time
+  const sorted = [...expenses].sort((a,b) => (a.date + a.time).localeCompare(b.date + b.time));
+  for (const e of sorted){
+    body.push([e.date, e.time, e.category, e.detail || "-", Number(e.amount).toFixed(2)]);
+  }
+  doc.autoTable({
+    head,
+    body,
+    startY: 70,
+    styles: { fontSize:10, cellPadding:6 },
+    headStyles: { fillColor: [11,99,255], textColor:255, halign:'center' },
+    columnStyles: {0:{cellWidth:70},1:{cellWidth:50},2:{cellWidth:100},3:{cellWidth:260},4:{cellWidth:70, halign:'right'}},
+    theme:'grid',
+    didDrawPage: function(data){
+      const total = expenses.reduce((s,r)=>s + Number(r.amount), 0).toFixed(2);
+      const pageH = doc.internal.pageSize.getHeight();
+      doc.setFontSize(11);
+      doc.text(`Total: ₹${total}
